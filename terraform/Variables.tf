@@ -19,7 +19,7 @@ variable "ecr_repo_name" {
 variable "key_pair_name" {
   description = "Name of the EC2 key pair"
   type        = string
-  default     = "deployer"
+  default     = "deployer-key-9176"
 }
 
 variable "instance_type" {
