@@ -1,5 +1,5 @@
 # -------------------------
-# Corrected Outputs
+# Outputs
 # -------------------------
 
 # Default VPC
@@ -32,14 +32,15 @@ output "ecr_repository_uri" {
   )
 }
 
-# EC2 public IP address
+# EC2 public IP address (passed in via variable)
 output "ec2_public_ip" {
-  value = var.ec2_public_ip
+  description = "Public IP of the existing EC2 instance"
+  value       = var.ec2_public_ip
 }
 
-# Private key (only output if a new key pair was created)
+# Private key output (disabled, using existing key pair)
 output "private_key_pem" {
-  description = "Private key PEM (only if Terraform created a new key pair)"
-  value       = length(aws_key_pair.deployer) > 0 ? tls_private_key.ec2_key[0].private_key_pem : "Using existing key pair"
+  description = "No private key output since an existing key pair is used"
+  value       = "Using existing key pair"
   sensitive   = true
 }
