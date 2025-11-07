@@ -12,7 +12,7 @@ env:
   DOCKER_IMAGE_TAG: latest
   CONTAINER_NAME: my-simple-app
   HOST_PORT: 8090
-  APP_PORT: 80
+  APP_PORT: 8090
   KEY_PAIR_NAME: newinstance
   EC2_PUBLIC_IP: 16.16.167.13
 
