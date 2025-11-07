@@ -13,7 +13,7 @@ env:
   CONTAINER_NAME: my-simple-app
   HOST_PORT: 8090
   APP_PORT: 80
-  KEY_PAIR_NAME: deployer
+  KEY_PAIR_NAME: deployer-key-9176
   EC2_PUBLIC_IP: 16.16.142.182
 
 jobs:
