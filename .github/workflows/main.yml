@@ -59,7 +59,7 @@ jobs:
           echo "Waiting for EC2 instance to be ready..."
           aws ec2 wait instance-status-ok --instance-ids ${{ env.EC2_INSTANCE_ID }}
 
-      # 7️⃣ SSH into EC2 and deploy container
+      # 7️⃣ SSH into EC2 and deploy container (✅ no indentation inside EOF)
       - name: SSH into EC2 and deploy container
         run: |
           echo "${{ secrets.AWS_PRIVATE_KEY }}" > private_key.pem
@@ -70,7 +70,6 @@ jobs:
               -o ServerAliveInterval=30 -o ServerAliveCountMax=4 \
               -i private_key.pem ec2-user@${{ env.EC2_PUBLIC_IP }} <<'EOF'
 set -e
-
 echo "🔹 Updating system..."
 sudo dnf update -y
 
@@ -95,7 +94,7 @@ sudo docker run -d --name my-simple-app -p 8090:80 456501836709.dkr.ecr.eu-north
 echo "✅ Deployment complete."
 EOF
 
-      # 8️⃣ Health check to verify deployment success
+      # 8️⃣ Health check
       - name: Health check
         run: |
           echo "🔎 Performing health check..."
