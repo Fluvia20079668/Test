@@ -1,4 +1,4 @@
-name: Deploy to AWS EC2 via Terraform and Docker
+name: Build, Push to ECR, and Deploy to EC2
 
 on:
   push:
@@ -14,7 +14,7 @@ env:
   HOST_PORT: 8090
   APP_PORT: 80
   KEY_PAIR_NAME: deployer
-  EXISTING_EC2_IP: 16.170.110.166   # ✅ your current EC2 IP
+  EC2_PUBLIC_IP: 16.16.142.182
 
 jobs:
   deploy:
@@ -52,18 +52,15 @@ jobs:
             -var project_name=my-simple-app \
             -var aws_region=${{ env.AWS_REGION }} \
             -var ecr_repo_name=${{ env.ECR_REPO_NAME }} \
-            -var key_pair_name=${{ env.KEY_PAIR_NAME }} \
-            -var ec2_public_ip=${{ env.EXISTING_EC2_IP }}
+            -var ec2_public_ip=${{ env.EC2_PUBLIC_IP }}
 
-      # 6️⃣ Extract Terraform outputs (ECR info only)
+      # 6️⃣ Extract Terraform outputs
       - name: Extract Terraform outputs
         id: tf_output
         working-directory: ${{ env.TF_DIR }}
         run: |
           echo "Fetching Terraform outputs..."
           terraform output -json > tf_output.json
-          echo "✅ Terraform outputs fetched"
-          cat tf_output.json
           echo "EC2_PUBLIC_IP=$(jq -r .ec2_public_ip.value tf_output.json)" >> $GITHUB_ENV
           echo "ECR_URI=$(jq -r .ecr_repository_uri.value tf_output.json)" >> $GITHUB_ENV
           echo "ECR_REGISTRY=$(jq -r .ecr_repository_uri.value tf_output.json | cut -d'/' -f1)" >> $GITHUB_ENV
@@ -85,30 +82,34 @@ jobs:
             ${{ env.ECR_URI }}:${{ env.DOCKER_IMAGE_TAG }}
           docker push ${{ env.ECR_URI }}:${{ env.DOCKER_IMAGE_TAG }}
 
-      # 🔟 Deploy Docker container to your existing EC2
+      # 🔟 Deploy Docker container to existing EC2
       - name: SSH into EC2 and deploy container
         run: |
-          echo "${{ secrets.EC2_PRIVATE_KEY }}" > private_key.pem
+          echo "${{ secrets.AWS_PRIVATE_KEY }}" > private_key.pem
           chmod 600 private_key.pem
-          echo "Connecting to EC2 at ${{ env.EXISTING_EC2_IP }}..."
-          ssh -o StrictHostKeyChecking=no -i private_key.pem ec2-user@${{ env.EXISTING_EC2_IP }} << 'EOF'
+
+          echo "Connecting to EC2 at ${{ env.EC2_PUBLIC_IP }}..."
+          ssh -tt -o StrictHostKeyChecking=no -i private_key.pem ec2-user@${{ env.EC2_PUBLIC_IP }} << 'EOF'
             sudo yum update -y
             sudo yum install -y docker
             sudo systemctl start docker
             sudo systemctl enable docker
+
             # Login to ECR
-            aws ecr get-login-password --region eu-north-1 | sudo docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
-            # Stop and remove any old container
-            sudo docker stop ${{ env.CONTAINER_NAME }} || true
-            sudo docker rm ${{ env.CONTAINER_NAME }} || true
-            sudo docker image rm ${{ env.ECR_URI }}:${{ env.DOCKER_IMAGE_TAG }} || true
+            aws ecr get-login-password --region eu-north-1 | sudo docker login --username AWS --password-stdin 456501836709.dkr.ecr.eu-north-1.amazonaws.com
+
+            # Stop and remove old container
+            sudo docker stop my-simple-app || true
+            sudo docker rm my-simple-app || true
+            sudo docker image rm 456501836709.dkr.ecr.eu-north-1.amazonaws.com/my-simple-app:latest || true
+
             # Pull and run the new image
-            sudo docker pull ${{ env.ECR_URI }}:${{ env.DOCKER_IMAGE_TAG }}
-            sudo docker run -d --name ${{ env.CONTAINER_NAME }} -p ${{ env.HOST_PORT }}:${{ env.APP_PORT }} ${{ env.ECR_URI }}:${{ env.DOCKER_IMAGE_TAG }}
+            sudo docker pull 456501836709.dkr.ecr.eu-north-1.amazonaws.com/my-simple-app:latest
+            sudo docker run -d --name my-simple-app -p 8090:80 456501836709.dkr.ecr.eu-north-1.amazonaws.com/my-simple-app:latest
           EOF
 
       # 1️⃣1️⃣ Print app URL
       - name: Show live app URL
         run: |
           echo "✅ Deployment successful!"
-          echo "App URL: http://${{ env.EXISTING_EC2_IP }}:${{ env.HOST_PORT }}"
+          echo "App URL: http://${{ env.EC2_PUBLIC_IP }}:${{ env.HOST_PORT }}"
