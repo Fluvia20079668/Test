@@ -21,9 +21,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1️⃣ Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 2️⃣ Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -31,16 +33,19 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # 3️⃣ Setup Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.9.8
 
+      # 4️⃣ Terraform Init
       - name: Terraform Init
         working-directory: ${{ env.TF_DIR }}
         run: terraform init
 
-      - name: Terraform Apply (ECR only)
+      # 5️⃣ Terraform Apply (ECR only, reuse existing EC2)
+      - name: Terraform Apply
         working-directory: ${{ env.TF_DIR }}
         run: |
           terraform apply -auto-approve \
@@ -49,6 +54,7 @@ jobs:
             -var ecr_repo_name=${{ env.ECR_REPO_NAME }} \
             -var ec2_public_ip=${{ env.EC2_PUBLIC_IP }}
 
+      # 6️⃣ Extract Terraform outputs
       - name: Extract Terraform outputs
         id: tf_output
         working-directory: ${{ env.TF_DIR }}
@@ -58,38 +64,55 @@ jobs:
           echo "ECR_URI=$(jq -r .ecr_repository_uri.value tf_output.json)" >> $GITHUB_ENV
           echo "ECR_REGISTRY=$(jq -r .ecr_repository_uri.value tf_output.json | cut -d'/' -f1)" >> $GITHUB_ENV
 
+      # 7️⃣ Build Docker image
       - name: Build Docker image
         run: docker build -t ${{ env.ECR_REPO_NAME }}:${{ env.DOCKER_IMAGE_TAG }} .
 
+      # 8️⃣ Authenticate Docker to ECR
       - name: Authenticate Docker to ECR
         run: |
           aws ecr get-login-password --region ${{ env.AWS_REGION }} \
             | docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
 
+      # 9️⃣ Tag and Push Docker image
       - name: Tag and Push Docker image
         run: |
           docker tag ${{ env.ECR_REPO_NAME }}:${{ env.DOCKER_IMAGE_TAG }} \
             ${{ env.ECR_URI }}:${{ env.DOCKER_IMAGE_TAG }}
           docker push ${{ env.ECR_URI }}:${{ env.DOCKER_IMAGE_TAG }}
 
+      # 🔟 SSH into EC2 and deploy container
       - name: SSH into EC2 and deploy container
         run: |
           echo "${{ secrets.AWS_PRIVATE_KEY }}" > private_key.pem
           chmod 600 private_key.pem
           echo "Connecting to EC2 at ${{ env.EC2_PUBLIC_IP }}..."
-          ssh -tt -o StrictHostKeyChecking=no -i private_key.pem ec2-user@${{ env.EC2_PUBLIC_IP }} << 'EOF'
-            sudo yum update -y
-            sudo yum install -y docker
+          ssh -tt -o StrictHostKeyChecking=no \
+              -o ServerAliveInterval=30 -o ServerAliveCountMax=4 \
+              -i private_key.pem ec2-user@${{ env.EC2_PUBLIC_IP }} << 'EOF'
+            # Update system and install Docker
+            sudo dnf update -y
+            sudo dnf install -y docker
+
+            # Start Docker service
             sudo systemctl start docker
             sudo systemctl enable docker
-            aws ecr get-login-password --region eu-north-1 | sudo docker login --username AWS --password-stdin 456501836709.dkr.ecr.eu-north-1.amazonaws.com
+
+            # Login to ECR
+            aws ecr get-login-password --region eu-north-1 \
+              | sudo docker login --username AWS --password-stdin 456501836709.dkr.ecr.eu-north-1.amazonaws.com
+
+            # Stop and remove previous container if exists
             sudo docker stop my-simple-app || true
             sudo docker rm my-simple-app || true
             sudo docker image rm 456501836709.dkr.ecr.eu-north-1.amazonaws.com/my-simple-app:latest || true
+
+            # Pull and run the new Docker image
             sudo docker pull 456501836709.dkr.ecr.eu-north-1.amazonaws.com/my-simple-app:latest
             sudo docker run -d --name my-simple-app -p 8090:80 456501836709.dkr.ecr.eu-north-1.amazonaws.com/my-simple-app:latest
-          EOF
+            EOF
 
+      # 1️⃣1️⃣ Show live app URL
       - name: Show live app URL
         run: |
           echo "✅ Deployment successful!"
