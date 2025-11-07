@@ -69,30 +69,30 @@ jobs:
           ssh -o StrictHostKeyChecking=no \
               -o ServerAliveInterval=30 -o ServerAliveCountMax=4 \
               -i private_key.pem ec2-user@${{ env.EC2_PUBLIC_IP }} <<'EOF'
-set -e
-echo "🔹 Updating system..."
-sudo dnf update -y
+          set -e
+          echo "🔹 Updating system..."
+          sudo dnf update -y
 
-echo "🔹 Installing Docker..."
-sudo dnf install -y docker
-sudo systemctl start docker
-sudo systemctl enable docker
+          echo "🔹 Installing Docker..."
+          sudo dnf install -y docker
+          sudo systemctl start docker
+          sudo systemctl enable docker
 
-echo "🔹 Logging in to Amazon ECR..."
-aws ecr get-login-password --region eu-north-1 \
-  | sudo docker login --username AWS --password-stdin 456501836709.dkr.ecr.eu-north-1.amazonaws.com
-
-echo "🔹 Cleaning up old container..."
-sudo docker stop my-simple-app || true
-sudo docker rm my-simple-app || true
-sudo docker image rm 456501836709.dkr.ecr.eu-north-1.amazonaws.com/my-simple-app:latest || true
-
-echo "🔹 Pulling and running new container..."
-sudo docker pull 456501836709.dkr.ecr.eu-north-1.amazonaws.com/my-simple-app:latest
-sudo docker run -d --name my-simple-app -p 8090:80 456501836709.dkr.ecr.eu-north-1.amazonaws.com/my-simple-app:latest
-
-echo "✅ Deployment complete."
-EOF
+          echo "🔹 Logging in to Amazon ECR..."
+          aws ecr get-login-password --region eu-north-1 \
+            | sudo docker login --username AWS --password-stdin 456501836709.dkr.ecr.eu-north-1.amazonaws.com
+          
+          echo "🔹 Cleaning up old container..."
+          sudo docker stop my-simple-app || true
+          sudo docker rm my-simple-app || true
+          sudo docker image rm 456501836709.dkr.ecr.eu-north-1.amazonaws.com/my-simple-app:latest || true
+          
+          echo "🔹 Pulling and running new container..."
+          sudo docker pull 456501836709.dkr.ecr.eu-north-1.amazonaws.com/my-simple-app:latest
+          sudo docker run -d --name my-simple-app -p 8090:80 456501836709.dkr.ecr.eu-north-1.amazonaws.com/my-simple-app:latest
+          
+          echo "✅ Deployment complete."
+          EOF
 
       # 8️⃣ Health check
       - name: Health check
