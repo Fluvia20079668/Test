@@ -20,7 +20,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Configure AWS credentials for GitHub Actions
+      # 2️⃣ Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -28,20 +28,18 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # 3️⃣ Log in to Amazon ECR from GitHub Actions
+      # 3️⃣ Log in to Amazon ECR
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # 4️⃣ Build, tag, and push Docker image to ECR
+      # 4️⃣ Build, tag, and push image to ECR
       - name: Build, tag, and push image to ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: latest
         run: |
-          echo "🔹 Building Docker image..."
           docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG .
-          echo "🔹 Pushing Docker image to ECR..."
           docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
 
       # 5️⃣ Get EC2 public IP dynamically
@@ -61,32 +59,39 @@ jobs:
           echo "Waiting for EC2 instance to be ready..."
           aws ec2 wait instance-status-ok --instance-ids ${{ env.EC2_INSTANCE_ID }}
 
-      # 7️⃣ SSH into EC2 and deploy container with AWS creds
+      # 7️⃣ SSH into EC2 and deploy container (with all fixes)
       - name: SSH into EC2 and deploy container
+        env:
+          # Pass AWS credentials as env variables
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
           echo "${{ secrets.AWS_PRIVATE_KEY }}" > private_key.pem
           chmod 600 private_key.pem
-          ssh -o StrictHostKeyChecking=no -i private_key.pem ec2-user@${{ env.EC2_PUBLIC_IP }} <<EOF
+          echo "Connecting to EC2 at ${{ env.EC2_PUBLIC_IP }}..."
+          ssh -tt -o StrictHostKeyChecking=no \
+              -o ServerAliveInterval=30 -o ServerAliveCountMax=4 \
+              -i private_key.pem ec2-user@${{ env.EC2_PUBLIC_IP }} <<EOF
           set -e
-          
-          # ✅ Pass AWS credentials to EC2
-          export AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
-          export AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
-          export AWS_DEFAULT_REGION="eu-north-1"
-          
-          # Login to ECR
-          ECR_REGISTRY=\$(aws ecr describe-repositories --repository-names my-simple-app --query "repositories[0].repositoryUri" --output text)
-          aws ecr get-login-password | sudo docker login --username AWS --password-stdin \$ECR_REGISTRY
-          
-          # Stop old container and remove image
+          export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}"
+          export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY}"
+          export AWS_REGION="${AWS_REGION}"
+          echo "🔹 Updating system..."
+          sudo dnf update -y
+          echo "🔹 Installing Docker..."
+          sudo dnf install -y docker
+          sudo systemctl start docker
+          sudo systemctl enable docker
+          echo "🔹 Logging in to Amazon ECR..."
+          aws ecr get-login-password --region ${AWS_REGION} \
+            | sudo docker login --username AWS --password-stdin $ECR_REGISTRY
+          echo "🔹 Cleaning up old container..."
           sudo docker stop my-simple-app || true
           sudo docker rm my-simple-app || true
-          sudo docker image rm \$ECR_REGISTRY:latest || true
-          
-          # Pull new image and run
-          sudo docker pull \$ECR_REGISTRY:latest
-          sudo docker run -d --name my-simple-app -p 8090:80 \$ECR_REGISTRY:latest
-          
+          sudo docker image rm $ECR_REGISTRY/my-simple-app:latest || true
+          echo "🔹 Pulling and running new container..."
+          sudo docker pull $ECR_REGISTRY/my-simple-app:latest
+          sudo docker run -d --name my-simple-app -p 8090:80 $ECR_REGISTRY/my-simple-app:latest
           echo "✅ Deployment complete."
           EOF
 
