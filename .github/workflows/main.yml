@@ -81,24 +81,15 @@ jobs:
             ${{ env.ECR_URI }}:${{ env.DOCKER_IMAGE_TAG }}
           docker push ${{ env.ECR_URI }}:${{ env.DOCKER_IMAGE_TAG }}
 
-      # 🔟 SSH into EC2 and deploy container
-      - name: SSH into EC2 and deploy container
-        env:
-          AWS_REGION: ${{ env.AWS_REGION }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
-          APP_PORT: ${{ env.APP_PORT }}
-          HOST_PORT: ${{ env.HOST_PORT }}
-          ECR_URI: ${{ env.ECR_URI }}
-          ECR_REGISTRY: ${{ env.ECR_REGISTRY }}
-        run: |
-          echo "${{ secrets.AWS_PRIVATE_KEY }}" > private_key.pem
-          chmod 600 private_key.pem
-          ssh -tt -o StrictHostKeyChecking=no \
-              -o ServerAliveInterval=30 -o ServerAliveCountMax=4 \
-              -i private_key.pem ec2-user@${{ env.EC2_PUBLIC_IP }} <<EOF
-            set -e
+      # 🔟 SSH into EC2 and deploy container using appleboy/ssh-action
+      - name: Deploy Docker container to EC2
+        uses: appleboy/ssh-action@v0.1.6
+        with:
+          host: ${{ env.EC2_PUBLIC_IP }}
+          username: ec2-user
+          key: ${{ secrets.AWS_PRIVATE_KEY }}
+          port: 22
+          script: |
             # Install Docker if missing
             if ! command -v docker &> /dev/null; then
               echo "🔹 Installing Docker..."
@@ -108,25 +99,23 @@ jobs:
               sudo systemctl enable docker
             fi
             # Export AWS credentials for ECR login
-            export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}"
-            export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY}"
-            export AWS_DEFAULT_REGION="${AWS_REGION}"
+            export AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+            export AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            export AWS_DEFAULT_REGION=${{ env.AWS_REGION }}
             # Login to ECR
-            aws ecr get-login-password --region ${AWS_REGION} \
-              | sudo docker login --username AWS --password-stdin ${ECR_REGISTRY}
+            aws ecr get-login-password --region $AWS_DEFAULT_REGION | \
+              sudo docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
             # Stop and remove existing container if any
-            sudo docker stop ${CONTAINER_NAME} || true
-            sudo docker rm ${CONTAINER_NAME} || true
+            sudo docker stop ${{ env.CONTAINER_NAME }} || true
+            sudo docker rm ${{ env.CONTAINER_NAME }} || true
             # Pull the latest Docker image
-            sudo docker pull ${ECR_URI}:${DOCKER_IMAGE_TAG}
-            # Run the container and keep it running with restart policy
+            sudo docker pull ${{ env.ECR_URI }}:${{ env.DOCKER_IMAGE_TAG }}
+            # Run the new container
             sudo docker run -d \
-              --name ${CONTAINER_NAME} \
-              -p ${HOST_PORT}:${APP_PORT} \
+              --name ${{ env.CONTAINER_NAME }} \
+              -p ${{ env.HOST_PORT }}:${{ env.APP_PORT }} \
               --restart unless-stopped \
-              ${ECR_URI}:${DOCKER_IMAGE_TAG}
-            echo "✅ Deployment complete."
-          EOF
+              ${{ env.ECR_URI }}:${{ env.DOCKER_IMAGE_TAG }}
 
       # 1️⃣1️⃣ Show live app URL
       - name: Show live app URL
