@@ -19,7 +19,7 @@ variable "ecr_repo_name" {
 variable "key_pair_name" {
   description = "Name of the EC2 key pair"
   type        = string
-  default     = "deployer-key-9176"
+  default     = "newinstance"
 }
 
 variable "instance_type" {
@@ -31,5 +31,5 @@ variable "instance_type" {
 variable "ec2_public_ip" {
   description = "Public IP of the existing EC2 instance"
   type        = string
-  default     = "16.16.142.182"
+  default     = "16.16.167.13"
 }
