@@ -13,7 +13,6 @@ env:
   CONTAINER_NAME: my-simple-app
   HOST_PORT: 8090
   APP_PORT: 80
-  KEY_PAIR_NAME: newinstance
   EC2_PUBLIC_IP: 16.16.167.13
 
 jobs:
@@ -44,15 +43,14 @@ jobs:
         working-directory: ${{ env.TF_DIR }}
         run: terraform init
 
-      # 5️⃣ Terraform Apply (ECR only, reuse existing EC2)
+      # 5️⃣ Terraform Apply (ECR only — EC2 already exists)
       - name: Terraform Apply
         working-directory: ${{ env.TF_DIR }}
         run: |
           terraform apply -auto-approve \
             -var project_name=my-simple-app \
             -var aws_region=${{ env.AWS_REGION }} \
-            -var ecr_repo_name=${{ env.ECR_REPO_NAME }} \
-            -var ec2_public_ip=${{ env.EC2_PUBLIC_IP }}
+            -var ecr_repo_name=${{ env.ECR_REPO_NAME }}
 
       # 6️⃣ Extract Terraform outputs
       - name: Extract Terraform outputs
@@ -60,7 +58,6 @@ jobs:
         working-directory: ${{ env.TF_DIR }}
         run: |
           terraform output -json > tf_output.json
-          echo "EC2_PUBLIC_IP=$(jq -r .ec2_public_ip.value tf_output.json)" >> $GITHUB_ENV
           echo "ECR_URI=$(jq -r .ecr_repository_uri.value tf_output.json)" >> $GITHUB_ENV
           echo "ECR_REGISTRY=$(jq -r .ecr_repository_uri.value tf_output.json | cut -d'/' -f1)" >> $GITHUB_ENV
 
@@ -81,7 +78,7 @@ jobs:
             ${{ env.ECR_URI }}:${{ env.DOCKER_IMAGE_TAG }}
           docker push ${{ env.ECR_URI }}:${{ env.DOCKER_IMAGE_TAG }}
 
-      # 🔟 SSH into EC2 and deploy container
+      # 🔟 SSH into EC2 and deploy container (FIXED EOF)
       - name: SSH into EC2 and deploy container
         run: |
           echo "${{ secrets.AWS_PRIVATE_KEY }}" > private_key.pem
@@ -90,27 +87,22 @@ jobs:
           ssh -tt -o StrictHostKeyChecking=no \
               -o ServerAliveInterval=30 -o ServerAliveCountMax=4 \
               -i private_key.pem ec2-user@${{ env.EC2_PUBLIC_IP }} << 'EOF'
-            # Update system and install Docker
-            sudo dnf update -y
-            sudo dnf install -y docker
+sudo dnf update -y
+sudo dnf install -y docker
 
-            # Start Docker service
-            sudo systemctl start docker
-            sudo systemctl enable docker
+sudo systemctl start docker
+sudo systemctl enable docker
 
-            # Login to ECR
-            aws ecr get-login-password --region eu-north-1 \
-              | sudo docker login --username AWS --password-stdin 456501836709.dkr.ecr.eu-north-1.amazonaws.com
+aws ecr get-login-password --region eu-north-1 \
+  | sudo docker login --username AWS --password-stdin 456501836709.dkr.ecr.eu-north-1.amazonaws.com
 
-            # Stop and remove previous container if exists
-            sudo docker stop my-simple-app || true
-            sudo docker rm my-simple-app || true
-            sudo docker image rm 456501836709.dkr.ecr.eu-north-1.amazonaws.com/my-simple-app:latest || true
+sudo docker stop my-simple-app || true
+sudo docker rm my-simple-app || true
+sudo docker image rm 456501836709.dkr.ecr.eu-north-1.amazonaws.com/my-simple-app:latest || true
 
-            # Pull and run the new Docker image
-            sudo docker pull 456501836709.dkr.ecr.eu-north-1.amazonaws.com/my-simple-app:latest
-            sudo docker run -d --name my-simple-app -p 8090:80 456501836709.dkr.ecr.eu-north-1.amazonaws.com/my-simple-app:latest
-          EOF
+sudo docker pull 456501836709.dkr.ecr.eu-north-1.amazonaws.com/my-simple-app:latest
+sudo docker run -d --name my-simple-app -p 8090:80 456501836709.dkr.ecr.eu-north-1.amazonaws.com/my-simple-app:latest
+EOF
 
       # 1️⃣1️⃣ Show live app URL
       - name: Show live app URL
