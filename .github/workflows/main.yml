@@ -110,7 +110,7 @@ jobs:
             # Pull and run the new Docker image
             sudo docker pull 456501836709.dkr.ecr.eu-north-1.amazonaws.com/my-simple-app:latest
             sudo docker run -d --name my-simple-app -p 8090:80 456501836709.dkr.ecr.eu-north-1.amazonaws.com/my-simple-app:latest
-            EOF
+          EOF
 
       # 1️⃣1️⃣ Show live app URL
       - name: Show live app URL
