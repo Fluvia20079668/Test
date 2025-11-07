@@ -31,5 +31,5 @@ variable "instance_type" {
 variable "ec2_public_ip" {
   description = "Public IP of the existing EC2 instance"
   type        = string
-  default     = "16.170.110.166"
+  default     = "16.16.142.182"
 }
