@@ -37,31 +37,14 @@ resource "aws_ecr_repository" "app_repo" {
 }
 
 # -------------------------
-# EC2 Key Pair (auto-create if missing)
+# EC2 Key Pair (use existing only)
 # -------------------------
-locals {
-  # Try to detect if key pair exists safely
-  key_exists = can(data.aws_key_pair.existing[0].key_name)
-}
-
-# Try to read key pair — don’t fail if missing
 data "aws_key_pair" "existing" {
-  count    = 0 # prevent lookup crash if key doesn't exist
   key_name = var.key_pair_name
 }
 
-# Generate new key only if the key pair doesn't exist
-resource "tls_private_key" "ec2_key" {
-  count     = local.key_exists ? 0 : 1
-  algorithm = "RSA"
-  rsa_bits  = 4096
-}
-
-# Create AWS key pair if missing
-resource "aws_key_pair" "deployer" {
-  count      = local.key_exists ? 0 : 1
-  key_name   = var.key_pair_name
-  public_key = tls_private_key.ec2_key[0].public_key_openssh
+locals {
+  key_name = data.aws_key_pair.existing.key_name
 }
 
 # -------------------------
